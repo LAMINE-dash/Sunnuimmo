@@ -55,7 +55,7 @@ export default function PostPropertyPage({ onNavigate }: PostPropertyPageProps) 
           Vous devez être connecté pour publier une annonce
         </p>
         <button
-          onClick={() => onNavigate('auth', { mode: 'login' })}
+          onClick={() => onNavigate('login')}
           className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
         >
           Se connecter
@@ -278,7 +278,7 @@ export default function PostPropertyPage({ onNavigate }: PostPropertyPageProps) 
         </div>
         {Number(price) > 0 && (
           <p className="text-sm text-amber-600 font-medium mt-1">
-            {formatPrice(Number(price))}
+            {formatPrice(Number(price), listingType)}
           </p>
         )}
       </div>
@@ -569,7 +569,7 @@ export default function PostPropertyPage({ onNavigate }: PostPropertyPageProps) 
                 {[neighborhood, city].filter(Boolean).join(', ') || '—'}
               </p>
               <p className="text-amber-600 font-bold text-xl">
-                {Number(price) > 0 ? formatPrice(Number(price)) : '—'}
+                {Number(price) > 0 ? formatPrice(Number(price), listingType) : '—'}
               </p>
             </div>
           </div>
@@ -645,7 +645,7 @@ export default function PostPropertyPage({ onNavigate }: PostPropertyPageProps) 
               </li>
               <li className="flex justify-between">
                 <span className="text-gray-500">Prix</span>
-                <span className="font-medium text-amber-600">{Number(price) > 0 ? formatPrice(Number(price)) : '—'}</span>
+                <span className="font-medium text-amber-600">{Number(price) > 0 ? formatPrice(Number(price), listingType) : '—'}</span>
               </li>
               <li className="flex justify-between">
                 <span className="text-gray-500">Ville</span>

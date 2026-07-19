@@ -125,7 +125,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
                   </button>
                 ) : plan.id === 'free' ? (
                   <button
-                    onClick={() => onNavigate('auth', { mode: 'register' })}
+                    onClick={() => onNavigate('register')}
                     className="w-full py-2.5 px-4 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm transition-colors"
                   >
                     Commencer gratuitement

@@ -152,7 +152,7 @@ export default function AuthPage({ mode, onNavigate }: AuthPageProps) {
               <p className="text-gray-500 text-sm mb-6">
                 Pas encore de compte ?{' '}
                 <button
-                  onClick={() => onNavigate('auth', { mode: 'register' })}
+                  onClick={() => onNavigate('register')}
                   className="text-amber-600 font-medium hover:underline"
                 >
                   S'inscrire
@@ -264,7 +264,7 @@ export default function AuthPage({ mode, onNavigate }: AuthPageProps) {
               <p className="text-gray-500 text-sm mb-6">
                 Déjà un compte ?{' '}
                 <button
-                  onClick={() => onNavigate('auth', { mode: 'login' })}
+                  onClick={() => onNavigate('login')}
                   className="text-amber-600 font-medium hover:underline"
                 >
                   Se connecter

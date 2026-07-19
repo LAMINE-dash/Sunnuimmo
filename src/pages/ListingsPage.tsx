@@ -206,8 +206,8 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
                     >
                       <option value="">Toutes</option>
                       {CITIES.map((city) => (
-                        <option key={city.value} value={city.value}>
-                          {city.label}
+                        <option key={city} value={city}>
+                          {city}
                         </option>
                       ))}
                     </select>
@@ -317,11 +317,12 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
               </div>
             }
           >
-            <MapView
-              properties={filteredProperties}
-              onView={(id) => onNavigate('property', { id })}
-              style={{ height: 'calc(100vh - 220px)', minHeight: '500px' }}
-            />
+            <div style={{ height: 'calc(100vh - 220px)', minHeight: '500px' }}>
+              <MapView
+                properties={filteredProperties}
+                onPropertyClick={(id) => onNavigate('property', { id })}
+              />
+            </div>
           </Suspense>
         )}
 

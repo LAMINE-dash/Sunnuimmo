@@ -99,7 +99,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         <div className="text-center">
           <p className="text-gray-600 text-lg mb-4">Vous devez être connecté</p>
           <button
-            onClick={() => onNavigate('auth', { mode: 'login' })}
+            onClick={() => onNavigate('login')}
             className="px-6 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 transition-colors"
           >
             Se connecter
@@ -124,10 +124,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const navItems = [
     { icon: LayoutDashboard, label: "Vue d'ensemble", key: 'overview' },
     { icon: Home, label: 'Mes annonces', key: 'listings' },
-    { icon: MessageSquare, label: 'Messages', key: 'messages' },
-    { icon: Calendar, label: 'Visites', key: 'visits' },
-    { icon: Settings, label: 'Paramètres', key: 'settings' },
-  ];
+    { icon: MessageSquare, label: 'Messages', key: 'messages', nav: 'messages' as const },
+    { icon: Calendar, label: 'Visites', key: 'visits', nav: 'visits' as const },
+    { icon: Heart, label: 'Favoris', key: 'favorites', nav: 'favorites' as const },
+    { icon: Settings, label: 'Paramètres', key: 'settings', nav: 'profile' as const },
+  ] as const;
 
   const handleSignOut = async () => {
     await signOut();
@@ -157,10 +158,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ icon: Icon, label, key }) => (
+          {navItems.map(({ icon: Icon, label, key, nav }) => (
             <button
               key={key}
-              onClick={() => setSection(key)}
+              onClick={() => nav ? onNavigate(nav) : setSection(key)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 section === key
                   ? 'bg-amber-50 text-amber-700'
@@ -183,7 +184,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             Passer au Pro
           </button>
           <button
-            onClick={() => onNavigate('agency')}
+            onClick={() => onNavigate('agencies')}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             <Building className="w-4 h-4" />
@@ -268,7 +269,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{property.title}</p>
-                      <p className="text-sm text-amber-600 font-semibold mt-0.5">{formatPrice(property.price)}</p>
+                      <p className="text-sm text-amber-600 font-semibold mt-0.5">{formatPrice(property.price, property.listing_type)}</p>
                     </div>
                     <span className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
                       <Eye className="w-3 h-3" />
@@ -363,7 +364,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                       <p className="text-sm font-semibold text-gray-900 truncate">{property.title}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{property.city}</p>
                     </div>
-                    <p className="text-sm font-semibold text-amber-600 hidden sm:block">{formatPrice(property.price)}</p>
+                    <p className="text-sm font-semibold text-amber-600 hidden sm:block">{formatPrice(property.price, property.listing_type)}</p>
                     <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
                       Actif
                     </span>
@@ -431,13 +432,13 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                   icon: User,
                   title: 'Informations personnelles',
                   description: 'Nom, email, téléphone',
-                  action: undefined,
+                  action: () => onNavigate('profile'),
                 },
                 {
                   icon: Lock,
                   title: 'Sécurité',
                   description: 'Mot de passe, authentification',
-                  action: undefined,
+                  action: () => onNavigate('profile'),
                 },
                 {
                   icon: Bell,

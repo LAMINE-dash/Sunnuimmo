@@ -15,11 +15,14 @@ const AgencyPage    = lazy(() => import('./pages/AgencyPage'));
 const PricingPage   = lazy(() => import('./pages/PricingPage'));
 const EstimatePage  = lazy(() => import('./pages/EstimatePage'));
 const PaymentPage   = lazy(() => import('./pages/PaymentPage'));
+const ProfilePage   = lazy(() => import('./pages/ProfilePage'));
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage'));
+const VisitsPage     = lazy(() => import('./pages/VisitsPage'));
 
 type Page =
   | 'home' | 'listings' | 'property' | 'login' | 'register'
   | 'dashboard' | 'pricing' | 'estimate' | 'agencies' | 'messages'
-  | 'post-property' | 'payment';
+  | 'post-property' | 'payment' | 'profile' | 'favorites' | 'visits';
 
 interface PageState { page: Page; params?: Record<string, string> }
 
@@ -57,6 +60,9 @@ function App() {
           {page === 'messages'     && <MessagesPage onNavigate={navigate} />}
           {page === 'agencies'     && <AgencyPage onNavigate={navigate} />}
           {page === 'payment'      && <PaymentPage onNavigate={navigate} planId={params?.planId} />}
+          {page === 'profile'      && <ProfilePage onNavigate={navigate} />}
+          {page === 'favorites'     && <FavoritesPage onNavigate={navigate} />}
+          {page === 'visits'        && <VisitsPage onNavigate={navigate} />}
         </Suspense>
 
         {!NO_FOOTER.includes(page) && <Footer onNavigate={navigate} />}

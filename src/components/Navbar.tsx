@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, Menu, X, ChevronDown, Bell, MessageSquare, User, LogOut, LayoutDashboard, Search, Star } from 'lucide-react';
+import { Building2, Menu, X, ChevronDown, Bell, MessageSquare, User, LogOut, LayoutDashboard, Search, Star, Heart, Calendar } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface NavbarProps {
@@ -84,6 +84,18 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
                       <button onClick={() => { onNavigate('agencies'); setUserMenuOpen(false); }}
                         className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                         <Building2 className="w-4 h-4 text-gray-400" /> Espace Agence
+                      </button>
+                      <button onClick={() => { onNavigate('favorites'); setUserMenuOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                        <Heart className="w-4 h-4 text-gray-400" /> Mes favoris
+                      </button>
+                      <button onClick={() => { onNavigate('visits'); setUserMenuOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                        <Calendar className="w-4 h-4 text-gray-400" /> Mes visites
+                      </button>
+                      <button onClick={() => { onNavigate('profile'); setUserMenuOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                        <User className="w-4 h-4 text-gray-400" /> Mon profil
                       </button>
                       <div className="border-t border-gray-100 my-1" />
                       <button onClick={() => { signOut(); setUserMenuOpen(false); }}

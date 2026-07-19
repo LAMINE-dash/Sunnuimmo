@@ -109,7 +109,7 @@ export default function MessagesPage({ onNavigate }: MessagesPageProps) {
           <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-600 mb-6 text-lg">Connectez-vous pour accéder à vos messages</p>
           <button
-            onClick={() => onNavigate('auth', { mode: 'login' })}
+            onClick={() => onNavigate('login')}
             className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
           >
             Se connecter

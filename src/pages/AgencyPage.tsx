@@ -277,7 +277,7 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
                       <p className="text-xs text-gray-500 truncate">
                         {p.neighborhood ? `${p.neighborhood}, ` : ''}{p.city}
                       </p>
-                      <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price)}</p>
+                      <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price, p.listing_type)}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                       <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -382,7 +382,7 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 truncate">{p.title}</p>
                     <p className="text-sm text-gray-500">{p.city}</p>
-                    <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price)}</p>
+                    <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price, p.listing_type)}</p>
                   </div>
                   <div className="hidden sm:flex flex-col items-center gap-1">
                     <span
