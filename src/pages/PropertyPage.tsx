@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   MapPin, Bed, Bath, Square, Eye, Shield, Star, Phone, MessageSquare,
   Calendar, Share2, Heart, ChevronLeft, ChevronRight, Check, Brain,
-  Home, Building, FileText, AlertTriangle, ArrowLeft, User, X,
+  Home, Building, FileText, ArrowLeft, User, X, Loader2,
 } from 'lucide-react';
 import { MOCK_PROPERTIES, formatPrice, TYPE_LABELS } from '../lib/data';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface PropertyPageProps {
@@ -13,17 +14,35 @@ interface PropertyPageProps {
 }
 
 export default function PropertyPage({ propertyId, onNavigate }: PropertyPageProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const property = MOCK_PROPERTIES.find((p) => p.id === propertyId) ?? null;
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showVisitModal, setShowVisitModal] = useState(false);
-  const [visitSuccess, setVisitSuccess] = useState(false);
+  const [visitSuccess, setShowVisitSuccess] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [visitDate, setVisitDate] = useState('');
   const [visitTime, setVisitTime] = useState('09:00');
   const [visitMessage, setVisitMessage] = useState('');
+  const [submittingVisit, setSubmittingVisit] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user || !property) return;
+    let mounted = true;
+    supabase
+      .from('favorites')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('property_id', property.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (mounted) setIsFavorite(!!data);
+      });
+    return () => { mounted = false; };
+  }, [user, property]);
 
   const aiEstimate = useMemo(() => {
     if (!property) return null;
@@ -34,14 +53,14 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
     const confidence = Math.floor(78 + Math.random() * 15);
     return { base, min, max, confidence };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [propertyId]);
 
   if (!property) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
         <p className="text-2xl font-semibold text-gray-700">Bien non trouvé</p>
         <button
-          onClick={() => onNavigate('search')}
+          onClick={() => onNavigate('listings')}
           className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -59,10 +78,98 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
   const nextImage = () =>
     setCurrentImageIndex((i) => (i + 1) % totalImages);
 
-  const handleSubmitVisit = (e: React.FormEvent) => {
+  const toggleFavorite = async () => {
+    if (!user) {
+      onNavigate('login');
+      return;
+    }
+    setFavoriteLoading(true);
+    try {
+      if (isFavorite) {
+        await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('property_id', property.id);
+        setIsFavorite(false);
+        setToast('Retiré des favoris');
+      } else {
+        await supabase
+          .from('favorites')
+          .insert({ user_id: user.id, property_id: property.id });
+        setIsFavorite(true);
+        setToast('Ajouté aux favoris');
+      }
+      setTimeout(() => setToast(null), 2500);
+    } catch {
+      setToast('Erreur, réessayez');
+      setTimeout(() => setToast(null), 2500);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: property.title, url });
+      } catch { /* user cancelled */ }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        setToast('Lien copié');
+        setTimeout(() => setToast(null), 2500);
+      } catch { /* ignore */ }
+    }
+  };
+
+  const handleContact = () => {
+    if (!user) {
+      onNavigate('login');
+      return;
+    }
+    onNavigate('messages', { propertyId: property.id });
+  };
+
+  const handleSubmitVisit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setShowVisitModal(false);
-    setVisitSuccess(true);
+    if (!user) {
+      setShowVisitModal(false);
+      onNavigate('login');
+      return;
+    }
+    setSubmittingVisit(true);
+    try {
+      const { error } = await supabase.from('visits').insert({
+        user_id: user.id,
+        property_id: property.id,
+        visitor_name: profile?.full_name || user.email || 'Visiteur',
+        visitor_phone: profile?.phone || 'Non renseigné',
+        visitor_email: user.email,
+        preferred_date: visitDate,
+        preferred_time: visitTime,
+        message: visitMessage || null,
+        status: 'pending',
+      });
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        user_id: property.user_id,
+        type: 'visit_request',
+        title: 'Nouvelle demande de visite',
+        message: `Demande de visite pour ${property.title} le ${visitDate} à ${visitTime}`,
+        link: property.id,
+      });
+      setShowVisitModal(false);
+      setShowVisitSuccess(true);
+      setVisitDate('');
+      setVisitMessage('');
+    } catch {
+      setToast('Erreur lors de la demande, réessayez');
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSubmittingVisit(false);
+    }
   };
 
   const pricePerSqm =
@@ -72,12 +179,23 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-6 right-6 z-50 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3">
+          <Check className="w-5 h-5 flex-shrink-0" />
+          <span className="font-medium text-sm">{toast}</span>
+          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-75">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Visit success toast */}
       {visitSuccess && (
         <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3">
           <Check className="w-5 h-5 flex-shrink-0" />
           <span className="font-medium">Demande de visite envoyée avec succès !</span>
-          <button onClick={() => setVisitSuccess(false)} className="ml-2 hover:opacity-75">
+          <button onClick={() => setShowVisitSuccess(false)} className="ml-2 hover:opacity-75">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -88,14 +206,15 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowVisitModal(false)}
+            onClick={() => !submittingVisit && setShowVisitModal(false)}
           />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-bold text-gray-900">Demander une visite</h2>
               <button
                 onClick={() => setShowVisitModal(false)}
-                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                disabled={submittingVisit}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -144,10 +263,14 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
               </div>
               <button
                 type="submit"
-                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+                disabled={submittingVisit}
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
               >
-                <Calendar className="w-5 h-5" />
-                Confirmer la demande
+                {submittingVisit ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Envoi...</>
+                ) : (
+                  <><Calendar className="w-5 h-5" /> Confirmer la demande</>
+                )}
               </button>
             </form>
           </div>
@@ -157,7 +280,7 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Back navigation */}
         <button
-          onClick={() => onNavigate('search')}
+          onClick={() => onNavigate('listings')}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -423,7 +546,10 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
                   Calculez vos mensualités avec nos banques partenaires (CBAO, BHS, CBI) et obtenez une pré-approbation rapide.
                 </p>
               </div>
-              <button className="flex-shrink-0 px-5 py-2.5 border-2 border-blue-600 text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-colors text-sm whitespace-nowrap">
+              <button
+                onClick={() => onNavigate('estimate')}
+                className="flex-shrink-0 px-5 py-2.5 border-2 border-blue-600 text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-colors text-sm whitespace-nowrap"
+              >
                 Simuler mon prêt
               </button>
             </div>
@@ -438,17 +564,21 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
                 {/* Actions row */}
                 <div className="flex items-center justify-end gap-2 mb-4">
                   <button
-                    onClick={() => setIsFavorite((f) => !f)}
-                    className={`p-2 rounded-lg border transition-colors ${
+                    onClick={toggleFavorite}
+                    disabled={favoriteLoading}
+                    className={`p-2 rounded-lg border transition-colors disabled:opacity-60 ${
                       isFavorite
                         ? 'bg-red-50 border-red-200 text-red-500'
                         : 'border-gray-200 text-gray-400 hover:border-red-200 hover:text-red-400'
                     }`}
                     title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
                   >
-                    <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
+                    {favoriteLoading
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />}
                   </button>
                   <button
+                    onClick={handleShare}
                     className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
                     title="Partager"
                   >
@@ -477,7 +607,10 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
                     <Calendar className="w-5 h-5" />
                     Demander une visite
                   </button>
-                  <button className="w-full flex items-center justify-center gap-2 border-2 border-gray-300 hover:border-amber-400 hover:text-amber-600 text-gray-700 font-semibold py-3 rounded-xl transition-colors">
+                  <button
+                    onClick={handleContact}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-gray-300 hover:border-amber-400 hover:text-amber-600 text-gray-700 font-semibold py-3 rounded-xl transition-colors"
+                  >
                     <MessageSquare className="w-5 h-5" />
                     Envoyer un message
                   </button>

@@ -16,7 +16,9 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
   const [layout, setLayout] = useState<'grid' | 'list' | 'map'>(
     (initialFilters?.layout as 'grid' | 'list' | 'map') ?? 'grid'
   );
-  const [activeType, setActiveType] = useState(initialFilters?.activeType ?? 'all');
+  // HomePage sends `listing_type` (sale/rent) or `type` (apartment/villa/...)
+  const initialActiveType = initialFilters?.listing_type ?? initialFilters?.type ?? initialFilters?.activeType ?? 'all';
+  const [activeType, setActiveType] = useState(initialActiveType);
   const [cityFilter, setCityFilter] = useState(initialFilters?.city ?? '');
   const [minPrice, setMinPrice] = useState(initialFilters?.minPrice ?? '');
   const [maxPrice, setMaxPrice] = useState(initialFilters?.maxPrice ?? '');

@@ -73,10 +73,16 @@ function VisitsTable() {
               <td className="px-4 py-3 text-sm text-gray-600">{visit.visitor}</td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <button className="px-3 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-full hover:bg-emerald-100 transition-colors">
+                  <button
+                    onClick={() => onNavigate('visits')}
+                    className="px-3 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-full hover:bg-emerald-100 transition-colors"
+                  >
                     Confirmer
                   </button>
-                  <button className="px-3 py-1 text-xs font-medium bg-red-50 text-red-600 rounded-full hover:bg-red-100 transition-colors">
+                  <button
+                    onClick={() => onNavigate('visits')}
+                    className="px-3 py-1 text-xs font-medium bg-red-50 text-red-600 rounded-full hover:bg-red-100 transition-colors"
+                  >
                     Refuser
                   </button>
                 </div>
@@ -373,7 +379,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                       {property.views ?? 0}
                     </span>
                     <div className="flex items-center gap-2">
-                      <button className="px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors">
+                      <button
+                        onClick={() => onNavigate('post-property')}
+                        className="px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
                         Modifier
                       </button>
                       <button

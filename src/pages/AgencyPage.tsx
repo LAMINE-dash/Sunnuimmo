@@ -290,7 +290,10 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
                           {idx * 3 + 2}
                         </span>
                       </div>
-                      <button className="text-xs text-gray-600 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded-lg transition-colors">
+                      <button
+                        onClick={() => onNavigate('post-property')}
+                        className="text-xs text-gray-600 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded-lg transition-colors"
+                      >
                         Modifier
                       </button>
                     </div>
@@ -403,7 +406,10 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
                     Actif
                   </span>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-1.5 rounded-lg transition-colors">
+                    <button
+                      onClick={() => onNavigate('post-property')}
+                      className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-1.5 rounded-lg transition-colors"
+                    >
                       Modifier
                     </button>
                     <button
