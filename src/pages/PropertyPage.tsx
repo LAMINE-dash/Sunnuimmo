@@ -4,7 +4,7 @@ import {
   Calendar, Share2, Heart, ChevronLeft, ChevronRight, Check, Brain,
   Home, Building, FileText, ArrowLeft, User, X, Loader2,
 } from 'lucide-react';
-import { MOCK_PROPERTIES, formatPrice, TYPE_LABELS } from '../lib/data';
+import { MOCK_PROPERTIES, formatPrice, TYPE_LABELS, estimatePriceFromComparables } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -44,16 +44,11 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
     return () => { mounted = false; };
   }, [user, property]);
 
-  const aiEstimate = useMemo(() => {
-    if (!property) return null;
-    const factor = 0.92 + Math.random() * 0.16;
-    const base = property.price * factor;
-    const min = base * 0.9;
-    const max = base * 1.1;
-    const confidence = Math.floor(78 + Math.random() * 15);
-    return { base, min, max, confidence };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId]);
+  const [aiEstimate, setAiEstimate] = useState<ReturnType<typeof estimatePriceFromComparables> | null>(null);
+  useEffect(() => {
+    if (!property) { setAiEstimate(null); return; }
+    setAiEstimate(estimatePriceFromComparables(property));
+  }, [property]);
 
   if (!property) {
     return (
@@ -447,7 +442,7 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
                   <div>
                     <h2 className="text-lg font-bold">Estimation IA</h2>
                     <p className="text-gray-400 text-xs">
-                      Estimation basée sur les transactions récentes dans le quartier
+                      Basée sur {aiEstimate.samples} bien{aiEstimate.samples > 1 ? 's' : ''} comparable{aiEstimate.samples > 1 ? 's' : ''} · {formatPrice(Math.round(aiEstimate.avgPricePerSqm), 'sale')}/m²
                     </p>
                   </div>
                   <span className="ml-auto flex-shrink-0 px-3 py-1 bg-emerald-500/20 text-emerald-400 text-sm font-semibold rounded-full border border-emerald-500/30">
@@ -474,6 +469,9 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
                     </p>
                   </div>
                 </div>
+                <p className="text-gray-500 text-xs mt-4">
+                  Calculée sur le prix/m² moyen des biens similaires (même type, même ville, même transaction). À confirmer par une visite et un diagnostic professionnel.
+                </p>
               </div>
             )}
 

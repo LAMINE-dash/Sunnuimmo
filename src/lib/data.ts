@@ -153,6 +153,78 @@ export const TYPE_LABELS: Record<string,string> = {
   land:'Terrain', commercial:'Commerce', office:'Bureau',
 };
 
+/**
+ * Calcule une estimation basée sur le prix/m² des biens comparables
+ * (même ville, même type, même listing_type) dans MOCK_PROPERTIES.
+ * Retourne null si pas assez de comparables ou surface invalide.
+ */
+export function estimatePriceFromComparables(
+  target: Pick<Property, 'city' | 'type' | 'listing_type' | 'surface' | 'neighborhood' | 'price'>
+): { base: number; min: number; max: number; confidence: number; samples: number; avgPricePerSqm: number } | null {
+  if (!target.surface || target.surface <= 0) return null;
+
+  // Comparables : même ville + même type + même listing_type, surface connue, hors le bien lui-même n'est pas exclu car MOCK = source unique
+  const comparables = MOCK_PROPERTIES.filter(
+    (p) =>
+      p.city === target.city &&
+      p.type === target.type &&
+      p.listing_type === target.listing_type &&
+      p.surface &&
+      p.surface > 0 &&
+      p.id !== target.id // évite l'auto-référence si target vient de MOCK
+  );
+
+  // Fallback élargi : même type + listing_type (toutes villes) si < 3 comparables locaux
+  let samples = comparables;
+  if (samples.length < 3) {
+    samples = MOCK_PROPERTIES.filter(
+      (p) =>
+        p.type === target.type &&
+        p.listing_type === target.listing_type &&
+        p.surface &&
+        p.surface > 0 &&
+        p.id !== target.id
+    );
+  }
+
+  // Dernier fallback : même listing_type uniquement
+  if (samples.length < 3) {
+    samples = MOCK_PROPERTIES.filter(
+      (p) =>
+        p.listing_type === target.listing_type &&
+        p.surface &&
+        p.surface > 0 &&
+        p.id !== target.id
+    );
+  }
+
+  if (samples.length === 0) return null;
+
+  const pricesPerSqm = samples.map((p) => p.price / (p.surface as number));
+  const avg = pricesPerSqm.reduce((a, b) => a + b, 0) / pricesPerSqm.length;
+  // écart-type pour l'intervalle
+  const variance =
+    pricesPerSqm.reduce((acc, v) => acc + (v - avg) ** 2, 0) / pricesPerSqm.length;
+  const stdDev = Math.sqrt(variance);
+
+  const base = avg * target.surface;
+
+  // Intervalle à ±1 écart-type (plafonné à ±15% pour rester réaliste)
+  const spread = Math.min(stdDev * target.surface, base * 0.15);
+  const min = Math.max(0, base - spread);
+  const max = base + spread;
+
+  // Confiance : plus d'échantillons + faible dispersion = meilleure confiance
+  const dispersionRatio = avg > 0 ? stdDev / avg : 1;
+  const samplesScore = Math.min(samples.length / 8, 1); // 8+ échantillons = score max
+  const dispersionScore = Math.max(0, 1 - dispersionRatio); // faible dispersion = meilleur
+  const confidence = Math.round(
+    Math.max(45, Math.min(95, 50 + samplesScore * 30 + dispersionScore * 20))
+  );
+
+  return { base, min, max, confidence, samples: samples.length, avgPricePerSqm: avg };
+}
+
 export const SUBSCRIPTION_PLANS = [
   {
     id:'free', name:'Gratuit', price:0, period:'mois',
