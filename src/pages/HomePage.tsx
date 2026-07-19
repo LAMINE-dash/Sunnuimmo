@@ -1,14 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Search, MapPin, Star, Shield, Brain, Zap, Users, ArrowRight,
+  Search, MapPin, Star, Shield, Brain, Zap, Users, ArrowRight, Loader2,
 } from 'lucide-react';
-import { MOCK_PROPERTIES, PROPERTY_TYPES } from '../lib/data';
+import { supabase, Property } from '../lib/supabase';
+import { PROPERTY_TYPES } from '../lib/data';
 import PropertyCard from '../components/PropertyCard';
 
 export default function HomePage({ onNavigate }: { onNavigate: (page: string, params?: Record<string, string>) => void }) {
   const [tab, setTab] = useState<'sale' | 'rent'>('sale');
   const [city, setCity] = useState('');
   const [propertyType, setPropertyType] = useState('');
+  const [premiumProperties, setPremiumProperties] = useState<Property[]>([]);
+  const [loadingPremium, setLoadingPremium] = useState(true);
+
+  useEffect(() => {
+    const fetchPremium = async () => {
+      setLoadingPremium(true);
+      try {
+        const { data, error } = await supabase
+          .from('properties')
+          .select('*')
+          .eq('status', 'active')
+          .eq('is_premium', true)
+          .order('created_at', { ascending: false })
+          .limit(3);
+        if (error) throw error;
+        setPremiumProperties((data as unknown as Property[]) ?? []);
+      } catch {
+        setPremiumProperties([]);
+      } finally {
+        setLoadingPremium(false);
+      }
+    };
+    fetchPremium();
+  }, []);
 
   const handleSearch = () => {
     const params: Record<string, string> = { listing_type: tab };
@@ -16,8 +41,6 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string, pa
     if (propertyType) params.type = propertyType;
     onNavigate('listings', params);
   };
-
-  const premiumProperties = MOCK_PROPERTIES.filter((p) => p.is_premium).slice(0, 3);
 
   const stats = [
     { value: '12 500+', label: 'annonces' },
@@ -221,13 +244,26 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string, pa
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {premiumProperties.map((p) => (
-              <PropertyCard
-                key={p.id}
-                property={p}
-                onView={() => onNavigate('property', { id: p.id })}
-              />
-            ))}
+            {loadingPremium ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-400">
+                <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-500" />
+                <p className="text-sm">Chargement des annonces premium...</p>
+              </div>
+            ) : premiumProperties.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+                <Star className="w-12 h-12 text-gray-200 mb-4" />
+                <p className="text-gray-500 font-medium mb-1">Aucune annonce premium pour le moment</p>
+                <p className="text-gray-400 text-sm">Soyez le premier à publier une annonce premium.</p>
+              </div>
+            ) : (
+              premiumProperties.map((p) => (
+                <PropertyCard
+                  key={p.id}
+                  property={p}
+                  onView={() => onNavigate('property', { id: p.id })}
+                />
+              ))
+            )}
           </div>
           <div className="mt-8 text-center sm:hidden">
             <button

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Building2, Users, TrendingUp, Eye, MessageSquare, Star, Plus, Settings,
   BarChart3, Calendar, Shield, Phone, Mail, Globe, MapPin, ChevronRight,
-  ArrowUp, ArrowDown, FileText, CheckCircle, Clock, Crown, Home
+  ArrowUp, ArrowDown, FileText, CheckCircle, Clock, Crown, Home, Loader2
 } from 'lucide-react';
-import { MOCK_PROPERTIES, formatPrice } from '../lib/data';
+import { formatPrice } from '../lib/data';
+import { supabase, Property } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AgencyPageProps {
@@ -59,6 +60,28 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
   const [agencyWebsite, setAgencyWebsite] = useState('www.immodakar.sn');
   const [agencyDescription, setAgencyDescription] = useState('Agence immobilière de référence à Dakar depuis 2010.');
   const [savedToast, setSavedToast] = useState(false);
+  const [agencyProperties, setAgencyProperties] = useState<Property[]>([]);
+  const [loadingAgency, setLoadingAgency] = useState(true);
+
+  useEffect(() => {
+    const fetchAgency = async () => {
+      setLoadingAgency(true);
+      try {
+        const { data, error } = await supabase
+          .from('properties')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(8);
+        if (error) throw error;
+        setAgencyProperties((data as unknown as Property[]) ?? []);
+      } catch {
+        setAgencyProperties([]);
+      } finally {
+        setLoadingAgency(false);
+      }
+    };
+    fetchAgency();
+  }, []);
 
   const maxViews = Math.max(...MONTHLY_DATA.map((d) => d.views));
 
@@ -265,40 +288,55 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
                 </button>
               </div>
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">
-                {MOCK_PROPERTIES.slice(0, 4).map((p, idx) => (
-                  <div key={p.id} className="flex items-center gap-4 p-4">
-                    <img
-                      src={p.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200&q=80'}
-                      alt={p.title}
-                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 truncate text-sm">{p.title}</p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {p.neighborhood ? `${p.neighborhood}, ` : ''}{p.city}
-                      </p>
-                      <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price, p.listing_type)}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Eye className="w-3.5 h-3.5" />
-                          {120 + idx * 47}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          {idx * 3 + 2}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => onNavigate('post-property')}
-                        className="text-xs text-gray-600 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded-lg transition-colors"
-                      >
-                        Modifier
-                      </button>
-                    </div>
+                {loadingAgency ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
                   </div>
-                ))}
+                ) : agencyProperties.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                    <Home className="w-10 h-10 text-gray-200 mb-3" />
+                    <p className="text-gray-500 font-medium mb-1">Aucune annonce publiée</p>
+                    <p className="text-gray-400 text-sm mb-4">Publiez votre première annonce pour la voir apparaître ici.</p>
+                    <button
+                      onClick={() => onNavigate('post-property')}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Publier une annonce
+                    </button>
+                  </div>
+                ) : (
+                  agencyProperties.slice(0, 4).map((p, idx) => (
+                    <div key={p.id} className="flex items-center gap-4 p-4">
+                      <img
+                        src={p.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200&q=80'}
+                        alt={p.title}
+                        className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate text-sm">{p.title}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {p.neighborhood ? `${p.neighborhood}, ` : ''}{p.city}
+                        </p>
+                        <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price, p.listing_type)}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Eye className="w-3.5 h-3.5" />
+                            {p.views ?? 0}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => onNavigate('post-property')}
+                          className="text-xs text-gray-600 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded-lg transition-colors"
+                        >
+                          Modifier
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -375,52 +413,71 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
               </button>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100">
-              {MOCK_PROPERTIES.slice(0, 4).map((p, idx) => (
-                <div key={p.id} className="flex items-center gap-4 p-4">
-                  <img
-                    src={p.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200&q=80'}
-                    alt={p.title}
-                    className="w-20 h-16 rounded-lg object-cover flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{p.title}</p>
-                    <p className="text-sm text-gray-500">{p.city}</p>
-                    <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price, p.listing_type)}</p>
-                  </div>
-                  <div className="hidden sm:flex flex-col items-center gap-1">
-                    <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        p.listing_type === 'sale'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-purple-100 text-purple-700'
-                      }`}
-                    >
-                      {p.listing_type === 'sale' ? 'Vente' : 'Location'}
-                    </span>
-                  </div>
-                  <div className="hidden md:flex items-center gap-1 text-sm text-gray-500">
-                    <Eye className="w-4 h-4" />
-                    {120 + idx * 47}
-                  </div>
-                  <span className="hidden sm:inline-flex text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
-                    Actif
-                  </span>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => onNavigate('post-property')}
-                      className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Modifier
-                    </button>
-                    <button
-                      onClick={() => onNavigate('property', { id: p.id })}
-                      className="text-sm text-amber-600 border border-amber-200 hover:bg-amber-50 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Voir
-                    </button>
-                  </div>
+              {loadingAgency ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
                 </div>
-              ))}
+              ) : agencyProperties.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  <Home className="w-10 h-10 text-gray-200 mb-3" />
+                  <p className="text-gray-500 font-medium mb-1">Aucune annonce publiée</p>
+                  <p className="text-gray-400 text-sm mb-4">Publiez votre première annonce pour la voir apparaître ici.</p>
+                  <button
+                    onClick={() => onNavigate('post-property')}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Publier une annonce
+                  </button>
+                </div>
+              ) : (
+                agencyProperties.slice(0, 4).map((p, idx) => (
+                  <div key={p.id} className="flex items-center gap-4 p-4">
+                    <img
+                      src={p.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200&q=80'}
+                      alt={p.title}
+                      className="w-20 h-16 rounded-lg object-cover flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{p.title}</p>
+                      <p className="text-sm text-gray-500">{p.city}</p>
+                      <p className="text-sm font-bold text-amber-600 mt-0.5">{formatPrice(p.price, p.listing_type)}</p>
+                    </div>
+                    <div className="hidden sm:flex flex-col items-center gap-1">
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          p.listing_type === 'sale'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-purple-100 text-purple-700'
+                        }`}
+                      >
+                        {p.listing_type === 'sale' ? 'Vente' : 'Location'}
+                      </span>
+                    </div>
+                    <div className="hidden md:flex items-center gap-1 text-sm text-gray-500">
+                      <Eye className="w-4 h-4" />
+                      {p.views ?? 0}
+                    </div>
+                    <span className="hidden sm:inline-flex text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                      Actif
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => onNavigate('post-property')}
+                        className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        Modifier
+                      </button>
+                      <button
+                        onClick={() => onNavigate('property', { id: p.id })}
+                        className="text-sm text-amber-600 border border-amber-200 hover:bg-amber-50 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        Voir
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -632,37 +689,51 @@ export default function AgencyPage({ onNavigate }: AgencyPageProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {MOCK_PROPERTIES.slice(0, 4).map((p, idx) => {
-                      const demoLeads = [4, 7, 3, 9][idx];
-                      return (
-                        <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={p.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200&q=80'}
-                                alt={p.title}
-                                className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                              />
-                              <div className="min-w-0">
-                                <p className="font-medium text-gray-900 truncate">{p.title}</p>
-                                <p className="text-xs text-gray-500">{p.city}</p>
+                    {loadingAgency ? (
+                      <tr>
+                        <td colSpan={4} className="py-12 text-center">
+                          <Loader2 className="w-6 h-6 text-amber-500 animate-spin mx-auto" />
+                        </td>
+                      </tr>
+                    ) : agencyProperties.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-12 text-center text-gray-400 text-sm">
+                          Aucune annonce à analyser pour le moment.
+                        </td>
+                      </tr>
+                    ) : (
+                      agencyProperties.slice(0, 4).map((p, idx) => {
+                        const demoLeads = [4, 7, 3, 9][idx] ?? 0;
+                        return (
+                          <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={p.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200&q=80'}
+                                  alt={p.title}
+                                  className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <p className="font-medium text-gray-900 truncate">{p.title}</p>
+                                  <p className="text-xs text-gray-500">{p.city}</p>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-center font-medium text-gray-700">
-                            {120 + idx * 47}
-                          </td>
-                          <td className="py-3 px-4 text-center font-medium text-gray-700">
-                            {demoLeads}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
-                              Actif
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                            <td className="py-3 px-4 text-center font-medium text-gray-700">
+                              {p.views ?? 0}
+                            </td>
+                            <td className="py-3 px-4 text-center font-medium text-gray-700">
+                              {demoLeads}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                                Actif
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

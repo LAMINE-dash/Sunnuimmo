@@ -1,6 +1,7 @@
-import { useState, useMemo, lazy, Suspense } from 'react';
-import { Search, MapPin, SlidersHorizontal, Grid3x3, List, X, ChevronDown, Filter, Map } from 'lucide-react';
-import { MOCK_PROPERTIES, CITIES, PROPERTY_TYPES } from '../lib/data';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { Search, MapPin, SlidersHorizontal, Grid3x3, List, X, ChevronDown, Filter, Map, Loader2 } from 'lucide-react';
+import { supabase, Property } from '../lib/supabase';
+import { CITIES, PROPERTY_TYPES } from '../lib/data';
 import PropertyCard from '../components/PropertyCard';
 
 const MapView = lazy(() => import('../components/MapView'));
@@ -16,7 +17,6 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
   const [layout, setLayout] = useState<'grid' | 'list' | 'map'>(
     (initialFilters?.layout as 'grid' | 'list' | 'map') ?? 'grid'
   );
-  // HomePage sends `listing_type` (sale/rent) or `type` (apartment/villa/...)
   const initialActiveType = initialFilters?.listing_type ?? initialFilters?.type ?? initialFilters?.activeType ?? 'all';
   const [activeType, setActiveType] = useState(initialActiveType);
   const [cityFilter, setCityFilter] = useState(initialFilters?.city ?? '');
@@ -26,71 +26,60 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
   const [bedrooms, setBedrooms] = useState(initialFilters?.bedrooms ?? '');
   const [sortBy, setSortBy] = useState(initialFilters?.sortBy ?? 'recent');
 
-  const filteredProperties = useMemo(() => {
-    let results = [...MOCK_PROPERTIES];
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      results = results.filter(
-        (p) =>
-          p.title?.toLowerCase().includes(q) ||
-          p.description?.toLowerCase().includes(q) ||
-          p.city?.toLowerCase().includes(q) ||
-          p.neighborhood?.toLowerCase().includes(q)
-      );
-    }
+  useEffect(() => {
+    const fetchProperties = async () => {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('properties')
+          .select('*')
+          .eq('status', 'active');
 
-    if (activeType !== 'all') {
-      results = results.filter((p) => {
-        if (activeType === 'sale' || activeType === 'rent') {
-          return p.listing_type === activeType;
+        if (searchQuery.trim()) {
+          query = query.or(
+            `title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%,neighborhood.ilike.%${searchQuery}%`
+          );
         }
-        return p.type === activeType;
-      });
-    }
+        if (activeType === 'sale' || activeType === 'rent') {
+          query = query.eq('listing_type', activeType);
+        } else if (activeType !== 'all') {
+          query = query.eq('type', activeType);
+        }
+        if (cityFilter) query = query.eq('city', cityFilter);
+        if (minPrice) query = query.gte('price', Number(minPrice));
+        if (maxPrice) query = query.lte('price', Number(maxPrice));
+        if (minSurface) query = query.gte('surface', Number(minSurface));
+        if (bedrooms) {
+          const n = Number(bedrooms.replace('+', ''));
+          if (bedrooms.includes('+')) {
+            query = query.gte('bedrooms', n);
+          } else {
+            query = query.eq('bedrooms', n);
+          }
+        }
 
-    if (cityFilter) {
-      results = results.filter((p) => p.city === cityFilter);
-    }
+        const sortMap: Record<string, string> = {
+          recent: 'created_at',
+          price_asc: 'price',
+          price_desc: 'price',
+          surface_desc: 'surface',
+        };
+        const ascending = sortBy !== 'price_desc' && sortBy !== 'surface_desc';
+        query = query.order(sortMap[sortBy] ?? 'created_at', { ascending });
 
-    if (minPrice) {
-      results = results.filter((p) => p.price >= Number(minPrice));
-    }
-
-    if (maxPrice) {
-      results = results.filter((p) => p.price <= Number(maxPrice));
-    }
-
-    if (minSurface) {
-      results = results.filter((p) => p.surface >= Number(minSurface));
-    }
-
-    if (bedrooms) {
-      const bedroomCount = Number(bedrooms.replace('+', ''));
-      if (bedrooms.includes('+')) {
-        results = results.filter((p) => p.bedrooms >= bedroomCount);
-      } else {
-        results = results.filter((p) => p.bedrooms === bedroomCount);
+        const { data, error } = await query.limit(60);
+        if (error) throw error;
+        setProperties((data as unknown as Property[]) ?? []);
+      } catch {
+        setProperties([]);
+      } finally {
+        setLoading(false);
       }
-    }
-
-    results.sort((a, b) => {
-      if (sortBy === 'recent') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      if (sortBy === 'price_asc') {
-        return a.price - b.price;
-      }
-      if (sortBy === 'price_desc') {
-        return b.price - a.price;
-      }
-      if (sortBy === 'surface_desc') {
-        return b.surface - a.surface;
-      }
-      return 0;
-    });
-
-    return results;
+    };
+    fetchProperties();
   }, [searchQuery, activeType, cityFilter, minPrice, maxPrice, minSurface, bedrooms, sortBy]);
 
   function resetFilters() {
@@ -303,8 +292,14 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Results count */}
         <p className="text-sm text-gray-600 mb-4">
-          <span className="font-semibold text-gray-900">{filteredProperties.length}</span>{' '}
-          {filteredProperties.length === 1 ? 'bien trouvé' : 'biens trouvés'}
+          {loading ? (
+            <span className="text-gray-400">Chargement...</span>
+          ) : (
+            <>
+              <span className="font-semibold text-gray-900">{properties.length}</span>{' '}
+              {properties.length === 1 ? 'bien trouvé' : 'biens trouvés'}
+            </>
+          )}
         </p>
 
         {/* Map layout */}
@@ -321,7 +316,7 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
           >
             <div style={{ height: 'calc(100vh - 220px)', minHeight: '500px' }}>
               <MapView
-                properties={filteredProperties}
+                properties={properties}
                 onPropertyClick={(id) => onNavigate('property', { id })}
               />
             </div>
@@ -331,12 +326,17 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
         {/* Grid / List layout */}
         {layout !== 'map' && (
           <>
-            {filteredProperties.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-24">
+                <Loader2 className="w-8 h-8 text-amber-500 animate-spin mb-3" />
+                <p className="text-sm text-gray-500">Chargement des annonces...</p>
+              </div>
+            ) : properties.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <X className="w-12 h-12 text-gray-300 mb-4" />
                 <p className="text-gray-500 text-lg font-medium mb-2">Aucun bien trouvé</p>
                 <p className="text-gray-400 text-sm mb-6">
-                  Essayez d'élargir vos critères de recherche.
+                  Essayez d'élargir vos critères de recherche, ou soyez le premier à publier une annonce.
                 </p>
                 <button
                   onClick={resetFilters}
@@ -348,7 +348,7 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
               </div>
             ) : layout === 'grid' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProperties.map((property) => (
+                {properties.map((property) => (
                   <PropertyCard
                     key={property.id}
                     property={property}
@@ -358,7 +358,7 @@ export default function ListingsPage({ onNavigate, initialFilters }: ListingsPag
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {filteredProperties.map((property) => (
+                {properties.map((property) => (
                   <PropertyCard
                     key={property.id}
                     property={property}

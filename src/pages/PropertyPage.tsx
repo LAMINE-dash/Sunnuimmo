@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   MapPin, Bed, Bath, Square, Eye, Shield, Star, Phone, MessageSquare,
   Calendar, Share2, Heart, ChevronLeft, ChevronRight, Check, Brain,
   Home, Building, FileText, ArrowLeft, User, X, Loader2,
 } from 'lucide-react';
-import { MOCK_PROPERTIES, formatPrice, TYPE_LABELS, estimatePriceFromComparables } from '../lib/data';
-import { supabase } from '../lib/supabase';
+import { formatPrice, TYPE_LABELS, estimatePriceFromComparables } from '../lib/data';
+import { supabase, Property } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface PropertyPageProps {
@@ -16,7 +16,8 @@ interface PropertyPageProps {
 export default function PropertyPage({ propertyId, onNavigate }: PropertyPageProps) {
   const { user, profile } = useAuth();
 
-  const property = MOCK_PROPERTIES.find((p) => p.id === propertyId) ?? null;
+  const [property, setProperty] = useState<Property | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showVisitModal, setShowVisitModal] = useState(false);
@@ -28,6 +29,68 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
   const [visitMessage, setVisitMessage] = useState('');
   const [submittingVisit, setSubmittingVisit] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  const [aiEstimate, setAiEstimate] = useState<ReturnType<typeof estimatePriceFromComparables> | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('properties')
+          .select('*')
+          .eq('id', propertyId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!mounted) return;
+        const prop = data as unknown as Property | null;
+        setProperty(prop);
+
+        // Incrémente les vues (best-effort)
+        if (prop) {
+          supabase
+            .from('properties')
+            .update({ views: (prop.views ?? 0) + 1 })
+            .eq('id', prop.id)
+            .then(() => {});
+        }
+
+        // Comparables pour l'estimation
+        if (prop) {
+          let samples: Property[] = [];
+          const filters = ['city', 'type', 'listing_type'] as const;
+          for (let i = 0; i <= filters.length && samples.length < 3; i++) {
+            let q = supabase
+              .from('properties')
+              .select('*')
+              .eq('status', 'active')
+              .neq('id', prop.id);
+            for (let j = 0; j <= i; j++) {
+              const key = filters[j];
+              const val = (prop as any)[key];
+              if (val !== null && val !== undefined) q = q.eq(key, val);
+            }
+            const { data: d } = await q.limit(20);
+            if (d) samples = samples.concat(d as unknown as Property[]);
+          }
+          // dédoublonne
+          const seen = new Set<string>();
+          samples = samples.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+          if (!mounted) return;
+          setAiEstimate(estimatePriceFromComparables(prop, samples));
+        } else {
+          setAiEstimate(null);
+        }
+      } catch {
+        if (mounted) setProperty(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [propertyId]);
 
   useEffect(() => {
     if (!user || !property) return;
@@ -44,11 +107,14 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
     return () => { mounted = false; };
   }, [user, property]);
 
-  const [aiEstimate, setAiEstimate] = useState<ReturnType<typeof estimatePriceFromComparables> | null>(null);
-  useEffect(() => {
-    if (!property) { setAiEstimate(null); return; }
-    setAiEstimate(estimatePriceFromComparables(property));
-  }, [property]);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+        <p className="text-gray-500">Chargement du bien...</p>
+      </div>
+    );
+  }
 
   if (!property) {
     return (

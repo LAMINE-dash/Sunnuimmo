@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase, Property } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { MOCK_PROPERTIES, TYPE_LABELS } from '../lib/data';
+import { TYPE_LABELS } from '../lib/data';
 
 interface VisitsPageProps {
   onNavigate: (page: string, params?: Record<string, string>) => void;
@@ -38,50 +38,6 @@ const STATUS_STYLES: Record<VisitStatus, { badge: string; label: string }> = {
   completed: { badge: 'bg-blue-100 text-blue-700', label: 'Terminée' },
 };
 
-function buildDemoVisits(): Visit[] {
-  const base = {
-    user_id: 'demo',
-    visitor_phone: '+221 77 123 45 67',
-    visitor_email: 'visiteur@example.com',
-    message: 'Bonjour, je suis très intéressé par ce bien. Serait-il possible de visiter ce créneau ?',
-  };
-  return [
-    {
-      ...base,
-      id: 'demo-1',
-      property_id: MOCK_PROPERTIES[0].id,
-      visitor_name: 'Aminata Diallo',
-      preferred_date: '2025-02-15',
-      preferred_time: '10:00',
-      status: 'pending',
-      created_at: '2025-01-20T09:00:00Z',
-      properties: MOCK_PROPERTIES[0],
-    },
-    {
-      ...base,
-      id: 'demo-2',
-      property_id: MOCK_PROPERTIES[1].id,
-      visitor_name: 'Moussa Ndiaye',
-      preferred_date: '2025-02-18',
-      preferred_time: '14:00',
-      status: 'confirmed',
-      created_at: '2025-01-18T11:00:00Z',
-      properties: MOCK_PROPERTIES[1],
-    },
-    {
-      ...base,
-      id: 'demo-3',
-      property_id: MOCK_PROPERTIES[2].id,
-      visitor_name: 'Fatou Sow',
-      preferred_date: '2025-01-10',
-      preferred_time: '11:00',
-      status: 'completed',
-      created_at: '2025-01-05T08:00:00Z',
-      properties: MOCK_PROPERTIES[2],
-    },
-  ];
-}
-
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString('fr-FR', {
@@ -105,7 +61,6 @@ export default function VisitsPage({ onNavigate }: VisitsPageProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('pending');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [usingDemo, setUsingDemo] = useState(false);
 
   useEffect(() => {
     const fetchVisits = async () => {
@@ -121,16 +76,10 @@ export default function VisitsPage({ onNavigate }: VisitsPageProps) {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
-        if (error || !data || data.length === 0) {
-          setVisits(buildDemoVisits());
-          setUsingDemo(true);
-        } else {
-          setVisits(data as unknown as Visit[]);
-          setUsingDemo(false);
-        }
+        if (error) throw error;
+        setVisits((data as unknown as Visit[]) ?? []);
       } catch {
-        setVisits(buildDemoVisits());
-        setUsingDemo(true);
+        setVisits([]);
       } finally {
         setLoading(false);
       }
@@ -156,10 +105,6 @@ export default function VisitsPage({ onNavigate }: VisitsPageProps) {
   }), [visits]);
 
   const handleCancel = async (visitId: string) => {
-    if (usingDemo) {
-      setVisits((prev) => prev.map((v) => (v.id === visitId ? { ...v, status: 'cancelled' } : v)));
-      return;
-    }
     setCancellingId(visitId);
     try {
       const { error } = await supabase
@@ -280,12 +225,6 @@ export default function VisitsPage({ onNavigate }: VisitsPageProps) {
           </div>
         ) : (
           <>
-            {usingDemo && (
-              <div className="mb-6 flex items-center gap-2 px-4 py-3 rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200">
-                <Calendar className="w-4 h-4 flex-shrink-0" />
-                Mode démonstration — affichage d'exemples de visites
-              </div>
-            )}
             <div className="space-y-4">
               {filteredVisits.map((visit) => {
                 const statusStyle = STATUS_STYLES[visit.status];

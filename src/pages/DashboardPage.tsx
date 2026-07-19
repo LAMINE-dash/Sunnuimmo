@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Home, Plus, MessageSquare, Bell, Settings, LogOut,
   Eye, Heart, Calendar, Star, FileText,
-  ChevronRight, Building, Shield, CheckCircle, Lock, User
+  ChevronRight, Building, Shield, CheckCircle, Lock, User, Loader2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { MOCK_PROPERTIES, formatPrice } from '../lib/data';
+import { formatPrice } from '../lib/data';
+import { supabase, Property } from '../lib/supabase';
 
 interface DashboardPageProps {
   onNavigate: (page: string, params?: Record<string, string>) => void;
@@ -17,12 +18,6 @@ const PLAN_COLORS: Record<string, string> = {
   pro: 'bg-amber-100 text-amber-700',
   enterprise: 'bg-purple-100 text-purple-700',
 };
-
-const MOCK_VISITS = [
-  { property: 'Villa Almadies', date: '15 Jan 2025', time: '10h00', visitor: 'Aminata D.' },
-  { property: 'Appartement F3', date: '16 Jan 2025', time: '14h00', visitor: 'Moussa N.' },
-  { property: 'Maison Sacré-Coeur', date: '18 Jan 2025', time: '11h00', visitor: 'Fatou S.' },
-];
 
 const MOCK_NOTIFICATIONS = [
   {
@@ -51,7 +46,16 @@ const MOCK_NOTIFICATIONS = [
   },
 ];
 
-function VisitsTable() {
+function VisitsTable({ visits, onNavigate }: { visits: { id: string; property_title: string; preferred_date: string; preferred_time: string; visitor_name: string; status: string }[]; onNavigate: (page: string) => void }) {
+  if (visits.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10 text-center">
+        <Calendar className="w-10 h-10 text-gray-200 mb-3" />
+        <p className="text-gray-500 font-medium mb-1">Aucune demande de visite</p>
+        <p className="text-gray-400 text-sm">Les demandes de visite sur vos annonces apparaîtront ici.</p>
+      </div>
+    );
+  }
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
@@ -65,12 +69,12 @@ function VisitsTable() {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-100">
-          {MOCK_VISITS.map((visit, index) => (
-            <tr key={index} className="hover:bg-gray-50 transition-colors">
-              <td className="px-4 py-3 text-sm font-medium text-gray-900">{visit.property}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">{visit.date}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">{visit.time}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">{visit.visitor}</td>
+          {visits.map((visit) => (
+            <tr key={visit.id} className="hover:bg-gray-50 transition-colors">
+              <td className="px-4 py-3 text-sm font-medium text-gray-900">{visit.property_title}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{visit.preferred_date}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{visit.preferred_time}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{visit.visitor_name}</td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   <button
@@ -98,6 +102,76 @@ function VisitsTable() {
 export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const { user, profile, signOut } = useAuth();
   const [section, setSection] = useState('overview');
+  const [userProperties, setUserProperties] = useState<Property[]>([]);
+  const [loadingProperties, setLoadingProperties] = useState(true);
+  const [stats, setStats] = useState({ views: 0, favorites: 0, messages: 0, visits: 0 });
+  const [recentVisits, setRecentVisits] = useState<{ id: string; property_title: string; preferred_date: string; preferred_time: string; visitor_name: string; status: string }[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    (async () => {
+      setLoadingProperties(true);
+      try {
+        const { data, error } = await supabase
+          .from('properties')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        const props = (data as unknown as Property[]) ?? [];
+        if (!mounted) return;
+        setUserProperties(props);
+        setStats((s) => ({
+          ...s,
+          views: props.reduce((sum, p) => sum + (p.views ?? 0), 0),
+        }));
+      } catch {
+        if (mounted) setUserProperties([]);
+      } finally {
+        if (mounted) setLoadingProperties(false);
+      }
+
+      // Favoris reçus sur les annonces du user
+      try {
+        const { count } = await supabase
+          .from('favorites')
+          .select('id', { count: 'exact', head: true });
+        if (mounted) setStats((s) => ({ ...s, favorites: count ?? 0 }));
+      } catch {}
+
+      // Messages
+      try {
+        const { count } = await supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .or(`receiver_id.eq.${user.id},sender_id.eq.${user.id}`);
+        if (mounted) setStats((s) => ({ ...s, messages: count ?? 0 }));
+      } catch {}
+
+      // Visites récentes (reçues par le user sur ses biens)
+      try {
+        const { data: vData } = await supabase
+          .from('visits')
+          .select('id, preferred_date, preferred_time, visitor_name, status, properties!inner(title)')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (mounted && vData) {
+          const visits = (vData as any[]).map((v) => ({
+            id: v.id,
+            property_title: v.properties?.title ?? 'Bien supprimé',
+            preferred_date: v.preferred_date,
+            preferred_time: v.preferred_time,
+            visitor_name: v.visitor_name,
+            status: v.status,
+          }));
+          setRecentVisits(visits);
+          setStats((s) => ({ ...s, visits: visits.length }));
+        }
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, [user]);
 
   if (!user) {
     return (
@@ -229,7 +303,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                     <Eye className="w-4 h-4 text-amber-500" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">847</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.views}</p>
               </div>
               <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -238,7 +312,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                     <Heart className="w-4 h-4 text-rose-500" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">23</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.favorites}</p>
               </div>
               <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -247,7 +321,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                     <MessageSquare className="w-4 h-4 text-blue-500" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">12</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.messages}</p>
               </div>
               <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -256,7 +330,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                     <Calendar className="w-4 h-4 text-emerald-500" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">5</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.visits}</p>
               </div>
             </div>
 
@@ -266,23 +340,42 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 <h2 className="text-base font-semibold text-gray-900">Annonces récentes</h2>
               </div>
               <div className="divide-y divide-gray-50">
-                {MOCK_PROPERTIES.slice(0, 2).map((property) => (
-                  <div key={property.id} className="flex items-center gap-4 px-6 py-4">
-                    <img
-                      src={property.images?.[0] || 'https://via.placeholder.com/56x56?text=Photo'}
-                      alt={property.title}
-                      className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{property.title}</p>
-                      <p className="text-sm text-amber-600 font-semibold mt-0.5">{formatPrice(property.price, property.listing_type)}</p>
-                    </div>
-                    <span className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-                      <Eye className="w-3 h-3" />
-                      {property.views ?? 0}
-                    </span>
+                {loadingProperties ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
                   </div>
-                ))}
+                ) : userProperties.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center px-6">
+                    <Home className="w-10 h-10 text-gray-200 mb-3" />
+                    <p className="text-gray-500 font-medium mb-1">Aucune annonce publiée</p>
+                    <p className="text-gray-400 text-sm mb-4">Publiez votre première annonce pour commencer.</p>
+                    <button
+                      onClick={() => onNavigate('post-property')}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Publier une annonce
+                    </button>
+                  </div>
+                ) : (
+                  userProperties.slice(0, 2).map((property) => (
+                    <div key={property.id} className="flex items-center gap-4 px-6 py-4">
+                      <img
+                        src={property.images?.[0] || 'https://via.placeholder.com/56x56?text=Photo'}
+                        alt={property.title}
+                        className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{property.title}</p>
+                        <p className="text-sm text-amber-600 font-semibold mt-0.5">{formatPrice(property.price, property.listing_type)}</p>
+                      </div>
+                      <span className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                        <Eye className="w-3 h-3" />
+                        {property.views ?? 0}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -317,7 +410,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">Visites à venir</h2>
               </div>
-              <VisitsTable />
+              <VisitsTable visits={recentVisits} onNavigate={onNavigate} />
             </div>
 
             {/* Upgrade CTA */}
@@ -359,41 +452,60 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             </div>
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="divide-y divide-gray-100">
-                {MOCK_PROPERTIES.slice(0, 3).map((property) => (
-                  <div key={property.id} className="flex items-center gap-4 px-6 py-4">
-                    <img
-                      src={property.images?.[0] || 'https://via.placeholder.com/40x40?text=Photo'}
-                      alt={property.title}
-                      className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{property.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{property.city}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-amber-600 hidden sm:block">{formatPrice(property.price, property.listing_type)}</p>
-                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                      Actif
-                    </span>
-                    <span className="hidden md:flex items-center gap-1 text-xs text-gray-500">
-                      <Eye className="w-3.5 h-3.5" />
-                      {property.views ?? 0}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onNavigate('post-property')}
-                        className="px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        onClick={() => onNavigate('property', { id: String(property.id) })}
-                        className="px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors"
-                      >
-                        Voir
-                      </button>
-                    </div>
+                {loadingProperties ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
                   </div>
-                ))}
+                ) : userProperties.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center px-6">
+                    <Home className="w-10 h-10 text-gray-200 mb-3" />
+                    <p className="text-gray-500 font-medium mb-1">Aucune annonce publiée</p>
+                    <p className="text-gray-400 text-sm mb-4">Publiez votre première annonce pour la voir apparaître ici.</p>
+                    <button
+                      onClick={() => onNavigate('post-property')}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Publier une annonce
+                    </button>
+                  </div>
+                ) : (
+                  userProperties.slice(0, 3).map((property) => (
+                    <div key={property.id} className="flex items-center gap-4 px-6 py-4">
+                      <img
+                        src={property.images?.[0] || 'https://via.placeholder.com/40x40?text=Photo'}
+                        alt={property.title}
+                        className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{property.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{property.city}</p>
+                      </div>
+                      <p className="text-sm font-semibold text-amber-600 hidden sm:block">{formatPrice(property.price, property.listing_type)}</p>
+                      <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                        Actif
+                      </span>
+                      <span className="hidden md:flex items-center gap-1 text-xs text-gray-500">
+                        <Eye className="w-3.5 h-3.5" />
+                        {property.views ?? 0}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onNavigate('post-property')}
+                          className="px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          Modifier
+                        </button>
+                        <button
+                          onClick={() => onNavigate('property', { id: String(property.id) })}
+                          className="px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors"
+                        >
+                          Voir
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -426,7 +538,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           <div className="space-y-6">
             <h1 className="text-2xl font-bold text-gray-900">Demandes de visites</h1>
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <VisitsTable />
+              <VisitsTable visits={recentVisits} onNavigate={onNavigate} />
             </div>
           </div>
         )}
