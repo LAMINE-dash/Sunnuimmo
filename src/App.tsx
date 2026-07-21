@@ -57,7 +57,7 @@ function App() {
           {page === 'pricing'      && <PricingPage onNavigate={navigate} />}
           {page === 'estimate'     && <EstimatePage onNavigate={navigate} />}
           {page === 'post-property'&& <PostPropertyPage onNavigate={navigate} />}
-          {page === 'messages'     && <MessagesPage onNavigate={navigate} />}
+          {page === 'messages'     && <MessagesPage onNavigate={navigate} initialPropertyId={params?.propertyId} initialReceiverId={params?.receiverId} />}
           {page === 'agencies'     && <AgencyPage onNavigate={navigate} />}
           {page === 'payment'      && <PaymentPage onNavigate={navigate} planId={params?.planId} />}
           {page === 'profile'      && <ProfilePage onNavigate={navigate} />}

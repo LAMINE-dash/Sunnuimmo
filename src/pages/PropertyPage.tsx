@@ -190,7 +190,12 @@ export default function PropertyPage({ propertyId, onNavigate }: PropertyPagePro
       onNavigate('login');
       return;
     }
-    onNavigate('messages', { propertyId: property.id });
+    if (user.id === property.user_id) {
+      setToast('Vous ne pouvez pas vous envoyer un message');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    onNavigate('messages', { propertyId: property.id, receiverId: property.user_id });
   };
 
   const handleSubmitVisit = async (e: React.FormEvent) => {

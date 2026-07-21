@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   User, Lock, CreditCard, Mail, Phone, MapPin, Camera, Shield, CheckCircle,
   Loader2, AlertCircle, Star, ArrowLeft, Calendar, Eye, Heart, Building,
@@ -61,6 +61,24 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
   const [securityToast, setSecurityToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [annoncesUsed, setAnnoncesUsed] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const { count } = await supabase
+          .from('properties')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id);
+        if (mounted) setAnnoncesUsed(count ?? 0);
+      } catch {
+        if (mounted) setAnnoncesUsed(0);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user]);
 
   if (!user) {
     return (
@@ -90,7 +108,6 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const plan = profile?.subscription_plan || 'free';
   const planDetails = SUBSCRIPTION_PLANS.find((p) => p.id === plan);
   const annonceLimit = PLAN_ANNONCE_LIMITS[plan] ?? 3;
-  const annoncesUsed = 2; // demo value
 
   const showToast = (
     setter: (t: { type: 'success' | 'error'; msg: string } | null) => void,

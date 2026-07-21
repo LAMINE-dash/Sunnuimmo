@@ -19,33 +19,6 @@ const PLAN_COLORS: Record<string, string> = {
   enterprise: 'bg-purple-100 text-purple-700',
 };
 
-const MOCK_NOTIFICATIONS = [
-  {
-    icon: Bell,
-    text: 'Nouvelle demande de visite pour votre Villa Almadies',
-    time: 'il y a 2h',
-    unread: true,
-  },
-  {
-    icon: MessageSquare,
-    text: 'Message de Mamadou Diop',
-    time: 'il y a 4h',
-    unread: true,
-  },
-  {
-    icon: Eye,
-    text: 'Votre annonce a été vue 50 fois aujourd\'hui',
-    time: 'il y a 6h',
-    unread: false,
-  },
-  {
-    icon: CheckCircle,
-    text: 'Votre paiement Pro a été confirmé',
-    time: 'il y a 1j',
-    unread: false,
-  },
-];
-
 function VisitsTable({ visits, onNavigate }: { visits: { id: string; property_title: string; preferred_date: string; preferred_time: string; visitor_name: string; status: string }[]; onNavigate: (page: string) => void }) {
   if (visits.length === 0) {
     return (
@@ -106,6 +79,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const [loadingProperties, setLoadingProperties] = useState(true);
   const [stats, setStats] = useState({ views: 0, favorites: 0, messages: 0, visits: 0 });
   const [recentVisits, setRecentVisits] = useState<{ id: string; property_title: string; preferred_date: string; preferred_time: string; visitor_name: string; status: string }[]>([]);
+  const [notifications, setNotifications] = useState<{ id: string; type: string; title: string; message: string | null; is_read: boolean; created_at: string; link: string | null }[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -167,6 +141,19 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           }));
           setRecentVisits(visits);
           setStats((s) => ({ ...s, visits: visits.length }));
+        }
+      } catch {}
+
+      // Notifications
+      try {
+        const { data: nData } = await supabase
+          .from('notifications')
+          .select('id, type, title, message, is_read, created_at, link')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(6);
+        if (mounted && nData) {
+          setNotifications(nData as unknown as typeof notifications);
         }
       } catch {}
     })();
@@ -385,23 +372,38 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 <h2 className="text-base font-semibold text-gray-900">Notifications</h2>
               </div>
               <div className="divide-y divide-gray-50">
-                {MOCK_NOTIFICATIONS.map((notif, index) => {
-                  const Icon = notif.icon;
-                  return (
-                    <div key={index} className="flex items-start gap-3 px-6 py-4">
-                      <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Icon className="w-4 h-4 text-amber-500" />
+                {notifications.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center px-6">
+                    <Bell className="w-10 h-10 text-gray-200 mb-3" />
+                    <p className="text-gray-500 font-medium mb-1">Aucune notification</p>
+                    <p className="text-gray-400 text-sm">Vos notifications apparaîtront ici.</p>
+                  </div>
+                ) : (
+                  notifications.map((notif) => {
+                    const Icon = notif.type === 'visit_request' ? Calendar
+                      : notif.type === 'message' ? MessageSquare
+                      : notif.type === 'payment' ? CheckCircle
+                      : notif.type === 'favorite' ? Heart
+                      : Bell;
+                    return (
+                      <div key={notif.id} className="flex items-start gap-3 px-6 py-4">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Icon className="w-4 h-4 text-amber-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800">{notif.title}</p>
+                          {notif.message && <p className="text-xs text-gray-500 mt-0.5">{notif.message}</p>}
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {new Date(notif.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        {!notif.is_read && (
+                          <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0 mt-1.5" />
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800">{notif.text}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{notif.time}</p>
-                      </div>
-                      {notif.unread && (
-                        <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0 mt-1.5" />
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
 
