@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { CreditCard, Smartphone, ArrowLeft, Lock, CheckCircle, Loader2, Shield, Star, Crown, Zap, Building2, AlertCircle, Check } from 'lucide-react';
+import { CreditCard, Smartphone, ArrowLeft, Lock, CheckCircle, Loader2, Shield, Star, Crown, Zap, Building2, AlertCircle, Check, XCircle } from 'lucide-react';
 import { SUBSCRIPTION_PLANS } from '../lib/data';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface PaymentPageProps {
   onNavigate: (page: string, params?: Record<string, string>) => void;
@@ -9,7 +10,7 @@ interface PaymentPageProps {
 }
 
 export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<string>(planId || 'starter');
   const [paymentMethod, setPaymentMethod] = useState<'orange' | 'wave' | 'card'>('orange');
   const [phone, setPhone] = useState('');
@@ -19,6 +20,7 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
   const [cardCvv, setCardCvv] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const paidPlans = SUBSCRIPTION_PLANS.filter(p => p.id !== 'free');
   const selectedPlan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlanId) || SUBSCRIPTION_PLANS[1];
@@ -26,13 +28,38 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
   const tva = Math.round(selectedPlan.price * 0.18);
   const total = selectedPlan.price + tva;
 
-  const handlePayment = (e: React.FormEvent) => {
+  const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profile) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError(null);
+    try {
+      const endsAt = new Date();
+      endsAt.setMonth(endsAt.getMonth() + 1);
+
+      const { error: subError } = await supabase.from('subscriptions').insert({
+        plan: selectedPlanId,
+        amount: total,
+        payment_method: paymentMethod,
+        status: 'paid',
+        started_at: new Date().toISOString(),
+        ends_at: endsAt.toISOString(),
+      });
+      if (subError) throw subError;
+
+      const { error: profError } = await supabase
+        .from('profiles')
+        .update({ subscription_plan: selectedPlanId })
+        .eq('user_id', profile.user_id);
+      if (profError) throw profError;
+
+      await refreshProfile();
       setSuccess(true);
-    }, 2200);
+    } catch {
+      setError('Le paiement a échoué. Veuillez réessayer.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatCardNumber = (val: string) => {
@@ -274,6 +301,12 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
                   </>
                 )}
               </button>
+              {error && (
+                <div className="mt-2 flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-3">
+                  <XCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
             </form>
           </div>
         </div>

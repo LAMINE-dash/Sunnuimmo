@@ -55,3 +55,15 @@ export interface Message {
   is_read: boolean;
   created_at: string;
 }
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan: 'free' | 'starter' | 'pro' | 'enterprise';
+  amount: number;
+  payment_method: 'orange' | 'wave' | 'card';
+  status: 'pending' | 'paid' | 'cancelled' | 'refunded';
+  started_at: string;
+  ends_at: string | null;
+  created_at: string;
+}
