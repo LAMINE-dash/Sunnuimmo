@@ -35,7 +35,22 @@ const PageLoader = () => (
 );
 
 function App() {
-  const [{ page, params }, setPage] = useState<PageState>({ page: 'home' });
+  const [{ page, params }, setPage] = useState<PageState>(() => {
+    // Handle Flutterwave redirect: ?page=payment&planId=X&txRef=Y
+    const url = new URL(window.location.href);
+    const urlPage = url.searchParams.get('page');
+    const urlPlanId = url.searchParams.get('planId');
+    const urlTxRef = url.searchParams.get('txRef');
+    if (urlPage === 'payment' && urlTxRef) {
+      // Clean URL after capturing params
+      url.searchParams.delete('page');
+      url.searchParams.delete('planId');
+      url.searchParams.delete('txRef');
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+      return { page: 'payment' as Page, params: { planId: urlPlanId || 'starter', txRef: urlTxRef } };
+    }
+    return { page: 'home' as Page };
+  });
 
   const navigate = (newPage: string, newParams?: Record<string, string>) => {
     setPage({ page: newPage as Page, params: newParams });
@@ -59,7 +74,7 @@ function App() {
           {page === 'post-property'&& <PostPropertyPage onNavigate={navigate} />}
           {page === 'messages'     && <MessagesPage onNavigate={navigate} initialPropertyId={params?.propertyId} initialReceiverId={params?.receiverId} />}
           {page === 'agencies'     && <AgencyPage onNavigate={navigate} />}
-          {page === 'payment'      && <PaymentPage onNavigate={navigate} planId={params?.planId} />}
+          {page === 'payment'      && <PaymentPage onNavigate={navigate} planId={params?.planId} txRef={params?.txRef} />}
           {page === 'profile'      && <ProfilePage onNavigate={navigate} />}
           {page === 'favorites'     && <FavoritesPage onNavigate={navigate} />}
           {page === 'visits'        && <VisitsPage onNavigate={navigate} />}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CreditCard, Smartphone, ArrowLeft, Lock, CheckCircle, Loader2, Shield, Star, Crown, Zap, Building2, AlertCircle, Check, XCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CreditCard, Smartphone, ArrowLeft, Lock, CheckCircle, Loader2, Shield, Star, Crown, Zap, Building2, AlertCircle, Check, XCircle, ExternalLink } from 'lucide-react';
 import { SUBSCRIPTION_PLANS } from '../lib/data';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -7,26 +7,58 @@ import { supabase } from '../lib/supabase';
 interface PaymentPageProps {
   onNavigate: (page: string, params?: Record<string, string>) => void;
   planId?: string;
+  txRef?: string;
 }
 
-export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
+type VerifyState = 'idle' | 'verifying' | 'success' | 'failed';
+
+export default function PaymentPage({ onNavigate, planId, txRef }: PaymentPageProps) {
   const { profile, refreshProfile } = useAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<string>(planId || 'starter');
   const [paymentMethod, setPaymentMethod] = useState<'orange' | 'wave' | 'card'>('orange');
   const [phone, setPhone] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verifyState, setVerifyState] = useState<VerifyState>('idle');
 
   const paidPlans = SUBSCRIPTION_PLANS.filter(p => p.id !== 'free');
   const selectedPlan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlanId) || SUBSCRIPTION_PLANS[1];
-
   const tva = Math.round(selectedPlan.price * 0.18);
   const total = selectedPlan.price + tva;
+
+  // Auto-verify when returning from Flutterwave redirect
+  useEffect(() => {
+    if (!txRef) { setVerifyState('idle'); return; }
+    let mounted = true;
+    setVerifyState('verifying');
+    (async () => {
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-payment`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.data.session?.access_token}`,
+            },
+            body: JSON.stringify({ tx_ref: txRef }),
+          }
+        );
+        const result = await resp.json();
+        if (!mounted) return;
+        if (result.verified && result.saved) {
+          await refreshProfile();
+          setVerifyState('success');
+        } else {
+          setVerifyState('failed');
+        }
+      } catch {
+        if (mounted) setVerifyState('failed');
+      }
+    })();
+    return () => { mounted = false; };
+  }, [txRef, refreshProfile]);
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,42 +66,36 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
     setLoading(true);
     setError(null);
     try {
-      const endsAt = new Date();
-      endsAt.setMonth(endsAt.getMonth() + 1);
-
-      const { error: subError } = await supabase.from('subscriptions').insert({
-        plan: selectedPlanId,
-        amount: total,
-        payment_method: paymentMethod,
-        status: 'paid',
-        started_at: new Date().toISOString(),
-        ends_at: endsAt.toISOString(),
-      });
-      if (subError) throw subError;
-
-      const { error: profError } = await supabase
-        .from('profiles')
-        .update({ subscription_plan: selectedPlanId })
-        .eq('user_id', profile.user_id);
-      if (profError) throw profError;
-
-      await refreshProfile();
-      setSuccess(true);
-    } catch {
-      setError('Le paiement a échoué. Veuillez réessayer.');
+      const { data: session } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            plan: selectedPlanId,
+            amount: total,
+            email: profile.email,
+            name: profile.full_name,
+            phone: phone || undefined,
+            user_id: profile.user_id,
+          }),
+        }
+      );
+      const result = await resp.json();
+      if (!resp.ok || !result.link) {
+        throw new Error(result.error || 'Échec de l\'initialisation du paiement');
+      }
+      // Redirect to Flutterwave hosted checkout
+      window.location.href = result.link;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le paiement a échoué. Veuillez réessayer.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatCardNumber = (val: string) => {
-    return val.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim();
-  };
-
-  const formatExpiry = (val: string) => {
-    const clean = val.replace(/\D/g, '').slice(0, 4);
-    if (clean.length >= 2) return clean.slice(0, 2) + '/' + clean.slice(2);
-    return clean;
   };
 
   const getPlanIcon = (id: string) => {
@@ -79,7 +105,8 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
     return <Building2 className="w-6 h-6 text-gray-500" />;
   };
 
-  if (success) {
+  // --- Verification success screen ---
+  if (verifyState === 'success') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center px-4 max-w-md mx-auto">
@@ -88,7 +115,7 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Paiement réussi !</h1>
           <p className="text-gray-600 mb-2">
-            Votre abonnement {selectedPlan.name} est maintenant actif.
+            Votre abonnement est maintenant actif.
           </p>
           <p className="text-gray-500 text-sm mb-8">
             Un reçu a été envoyé à votre adresse email.
@@ -104,6 +131,43 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
     );
   }
 
+  // --- Verification failed screen ---
+  if (verifyState === 'failed') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center px-4 max-w-md mx-auto">
+          <div className="flex justify-center mb-6">
+            <XCircle className="w-20 h-20 text-red-500" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-3">Paiement non confirmé</h1>
+          <p className="text-gray-600 mb-8">
+            Nous n'avons pas pu confirmer votre paiement. Si vous avez été débité, contactez le support.
+          </p>
+          <button
+            onClick={() => onNavigate('pricing')}
+            className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-8 py-3 rounded-lg transition-colors"
+          >
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Verifying screen (returning from Flutterwave) ---
+  if (verifyState === 'verifying') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center px-4 max-w-md mx-auto">
+          <Loader2 className="w-16 h-16 text-amber-500 animate-spin mx-auto mb-6" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">Vérification du paiement...</h1>
+          <p className="text-gray-500">Nous confirmons votre transaction. Veuillez patienter.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Main payment form ---
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Page Header */}
@@ -163,7 +227,7 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className="text-2xl">🟠</span>
+                <Smartphone className="w-7 h-7 text-orange-500" />
                 <span className="text-sm font-medium text-gray-700">Orange Money</span>
               </button>
               <button
@@ -175,7 +239,7 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className="text-2xl">💙</span>
+                <Smartphone className="w-7 h-7 text-blue-500" />
                 <span className="text-sm font-medium text-gray-700">Wave</span>
               </button>
               <button
@@ -191,11 +255,15 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
                 <span className="text-sm font-medium text-gray-700">Carte bancaire</span>
               </button>
             </div>
+            <p className="mt-4 text-sm text-gray-500 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-gray-400" />
+              Vous serez redirigé vers Flutterwave, notre prestataire de paiement sécurisé, pour finaliser la transaction.
+            </p>
           </div>
 
-          {/* 3. Payment Form */}
+          {/* 3. Contact Info + Submit */}
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Informations de paiement</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Vos informations</h2>
             <form onSubmit={handlePayment} className="space-y-4">
               {(paymentMethod === 'orange' || paymentMethod === 'wave') && (
                 <div>
@@ -212,75 +280,18 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
                       onChange={e => setPhone(e.target.value)}
                       placeholder="+221 77 000 00 00"
                       className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                      required
                     />
                   </div>
                   <p className="mt-2 text-sm text-gray-500">
-                    Vous recevrez une demande de paiement sur votre téléphone.
+                    Vous recevrez une demande de paiement sur votre téléphone après redirection.
                   </p>
                 </div>
               )}
 
               {paymentMethod === 'card' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Numéro de carte
-                    </label>
-                    <input
-                      type="text"
-                      value={cardNumber}
-                      onChange={e => setCardNumber(formatCardNumber(e.target.value))}
-                      placeholder="1234 5678 9012 3456"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nom du titulaire
-                    </label>
-                    <input
-                      type="text"
-                      value={cardName}
-                      onChange={e => setCardName(e.target.value)}
-                      placeholder="Prénom Nom"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Date d'expiration (MM/AA)
-                      </label>
-                      <input
-                        type="text"
-                        value={cardExpiry}
-                        onChange={e => setCardExpiry(formatExpiry(e.target.value))}
-                        placeholder="MM/AA"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        CVV
-                      </label>
-                      <input
-                        type="text"
-                        value={cardCvv}
-                        onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                        placeholder="123"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 flex items-center gap-1">
-                    🔒 Paiement sécurisé SSL
-                  </p>
-                </div>
+                <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  Vous serez redirigé vers la page sécurisée Flutterwave pour saisir les informations de votre carte (Visa/Mastercard).
+                </p>
               )}
 
               {/* Submit Button */}
@@ -292,7 +303,7 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Traitement en cours...</span>
+                    <span>Redirection en cours...</span>
                   </>
                 ) : (
                   <>
@@ -358,11 +369,11 @@ export default function PaymentPage({ onNavigate, planId }: PaymentPageProps) {
               <span>Satisfait ou remboursé 30 jours</span>
             </div>
 
-            {/* Info box */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700">
-                Note : Les intégrations Stripe et PayDunya sont en cours de configuration pour la production.
+            {/* Security info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+              <ExternalLink className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700">
+                Paiement sécurisé via Flutterwave. Wave, Orange Money et cartes bancaires acceptées.
               </p>
             </div>
           </div>
